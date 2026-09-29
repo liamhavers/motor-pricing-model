@@ -2,6 +2,7 @@
 
 import numpy as np
 import polars as pl
+from sklearn.metrics import mean_tweedie_deviance
 
 
 def one_way_table(df: pl.DataFrame, factor: str | pl.Expr, name: str | None = None) -> pl.DataFrame:
@@ -129,3 +130,18 @@ def gamma_deviance(avg_claim, pred, weight) -> float:
     mu = np.asarray(pred, dtype=float)
     w = np.asarray(weight, dtype=float)
     return float(2 * np.sum(w * (-np.log(y / mu) + (y - mu) / mu)) / w.sum())
+
+
+def tweedie_deviance(cost, pred_pp, exposure, power: float) -> float:
+    """Mean Tweedie deviance of pure premium per policy-year, exposure-weighted.
+
+    Compares observed cost per policy-year (cost / exposure) with the predicted pure
+    premium. Power 1 is Poisson deviance and power 2 is Gamma deviance; values in between
+    suit claim cost, which is zero for most policies and positive and skewed for the rest.
+    Deviances at different powers are on different scales, so models are only compared at
+    the same power.
+    """
+    e = np.asarray(exposure, dtype=float)
+    return float(
+        mean_tweedie_deviance(np.asarray(cost, dtype=float) / e, pred_pp, sample_weight=e, power=power)
+    )

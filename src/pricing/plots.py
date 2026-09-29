@@ -123,8 +123,17 @@ def plot_severity_distribution(amounts: np.ndarray, markers: dict[str, float]) -
     return fig
 
 
-# Fixed colour per model, used in every comparison figure.
+# Fixed colour per model type, used in every comparison figure. Names starting "GLM" are
+# blue and "GBM" orange; Tweedie variants are told apart by a dashed line, not a new colour.
 MODEL_COLOURS = {"GLM": SERIES[0], "GBM": SERIES[1]}
+
+
+def model_style(name: str) -> dict:
+    """Colour from the model type (first word of the name), dashes for Tweedie models."""
+    return {
+        "color": MODEL_COLOURS.get(name.split()[0], TEXT_SECONDARY),
+        "linestyle": "--" if "Tweedie" in name else "-",
+    }
 
 
 def plot_relativities(
@@ -164,15 +173,19 @@ def plot_relativities(
     return fig
 
 
-def plot_lorenz(curves: dict[str, tuple[np.ndarray, np.ndarray]], ginis: dict[str, float]) -> plt.Figure:
+def plot_lorenz(
+    curves: dict[str, tuple[np.ndarray, np.ndarray]],
+    ginis: dict[str, float],
+    ylabel: str = "Cumulative share of observed claims",
+) -> plt.Figure:
     """Ordered Lorenz curves for several models on one set of policies."""
     fig, ax = plt.subplots(figsize=(5.5, 5.5))
     ax.plot([0, 1], [0, 1], color=TEXT_SECONDARY, linewidth=1, linestyle="--", label="Random (Gini 0)")
     for name, (x, y) in curves.items():
         step = max(1, len(x) // 2000)
-        ax.plot(x[::step], y[::step], color=MODEL_COLOURS.get(name), label=f"{name} (Gini {ginis[name]:.3f})")
+        ax.plot(x[::step], y[::step], **model_style(name), label=f"{name} (Gini {ginis[name]:.3f})")
     ax.set_xlabel("Cumulative share of exposure\n(policies sorted from lowest to highest predicted rate)")
-    ax.set_ylabel("Cumulative share of observed claims")
+    ax.set_ylabel(ylabel)
     ax.set_title("Lorenz curve")
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
@@ -192,17 +205,42 @@ def plot_calibration(
     Takes tables from `evaluation.calibration_table`. Each model's bands come from sorting
     on its own predictions, so the panels share a y scale but not their policies.
     """
-    fig, axes = plt.subplots(1, len(tables), figsize=(4.5 * len(tables), 4), sharey=True)
-    for ax, (name, t) in zip(np.atleast_1d(axes), tables.items()):
-        ax.plot(t["band"], t["predicted_mean"], color=MODEL_COLOURS.get(name), marker="o", label="Predicted")
+    n = len(tables)
+    ncols = min(n, 2)
+    nrows = -(-n // ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4.5 * ncols, 4 * nrows), sharey=True, squeeze=False)
+    for ax, (name, t) in zip(axes.flat, tables.items()):
+        ax.plot(t["band"], t["predicted_mean"], marker="o", label="Predicted", **model_style(name))
         ax.plot(
             t["band"], t["observed_mean"], color=TEXT_PRIMARY, marker="D", linestyle="none",
             markersize=6, label="Observed",
         )
         ax.set_xticks(t["band"].to_list())
-        ax.set_xlabel(xlabel)
         ax.set_title(name)
         ax.legend(loc="upper left", fontsize=8, labelcolor=TEXT_SECONDARY)
-    np.atleast_1d(axes)[0].set_ylabel(ylabel)
+    for ax in axes[-1]:
+        ax.set_xlabel(xlabel)
+    for ax in axes[:, 0]:
+        ax.set_ylabel(ylabel)
+    for ax in list(axes.flat)[n:]:
+        ax.set_visible(False)
     fig.suptitle(title, x=0.02, ha="left", fontweight="bold", color=TEXT_PRIMARY)
+    fig.tight_layout()
+    return fig
+
+
+def plot_relativity_comparison(
+    series: dict[str, list[float]], levels: list[str], factor: str, base: str
+) -> plt.Figure:
+    """Relativities for one factor from several models, on the same base level."""
+    x = np.arange(len(levels))
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.axhline(1, color=TEXT_SECONDARY, linewidth=1)
+    for name, values in series.items():
+        ax.plot(x, values, marker="o", label=name, **model_style(name))
+    ax.set_xticks(x, levels)
+    ax.set_xlabel(f"{factor} (base level: {base})")
+    ax.set_ylabel("Relativity to base level")
+    ax.set_title(f"{factor}: pure premium relativities")
+    ax.legend(loc="best", fontsize=8, labelcolor=TEXT_SECONDARY)
     return fig

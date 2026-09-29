@@ -66,3 +66,39 @@ def test_severity_gbm_recovers_group_means():
     pred = model.predict(pd.DataFrame({"g": [0, 1]}))
     assert pred[0] == pytest.approx(avg[group == 0].mean(), rel=0.02)
     assert pred[1] == pytest.approx(avg[group == 1].mean(), rel=0.02)
+
+
+@pytest.fixture
+def simulated_cost():
+    """Compound Poisson-Gamma claim cost: two groups with pure premiums 100 and 300 a year."""
+    rng = np.random.default_rng(5)
+    n = 60_000
+    group = rng.integers(0, 2, n)
+    exposure = rng.uniform(0.1, 1.0, n)
+    freq = np.where(group == 1, 0.15, 0.1)
+    sev = np.where(group == 1, 2000.0, 1000.0)
+    counts = rng.poisson(freq * exposure)
+    cost = np.array([rng.gamma(0.5, s / 0.5, k).sum() for k, s in zip(counts, sev)])
+    return group, exposure, cost
+
+
+def test_tweedie_glm_recovers_group_pure_premiums(simulated_cost):
+    from pricing.glm import fit_tweedie_glm
+
+    group, exposure, cost = simulated_cost
+    X = pd.DataFrame({"const": 1.0, "g": group.astype(float)})
+    rate = predict(fit_tweedie_glm(X, cost, exposure, power=1.8), X)
+    for g in (0, 1):
+        expected = cost[group == g].sum() / exposure[group == g].sum()
+        assert rate[group == g][0] == pytest.approx(expected, rel=1e-3)
+
+
+def test_tweedie_gbm_is_rebased_to_training_total(simulated_cost):
+    from pricing.gbm import TweedieGBM
+
+    group, exposure, cost = simulated_cost
+    X = pd.DataFrame({"g": group})
+    model = TweedieGBM(1.8, {"num_leaves": 2, "min_data_in_leaf": 20}, 300).fit(X, cost, exposure)
+    assert np.sum(model.predict(X) * exposure) == pytest.approx(cost.sum())
+    pred = model.predict(pd.DataFrame({"g": [0, 1]}))
+    assert pred[1] / pred[0] == pytest.approx(3.0, rel=0.15)

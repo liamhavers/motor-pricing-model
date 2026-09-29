@@ -19,6 +19,21 @@ LightGBM skips its usual "start from the average" step when init_score is given,
 log of the training claim frequency is added to the offset. Otherwise the first few hundred
 trees are spent learning the overall level.
 
+Pure premium (Tweedie)
+----------------------
+The target is (capped) claim cost per policy-year with exposure as the sample weight, the
+same set-up as the Tweedie GLM.
+
+Boosting with a Tweedie loss under-predicts the overall level, increasingly so as trees
+are added and as the power rises. Each tree moves a leaf by one Newton step in log space.
+For a leaf with no claims that step is about -1/(2 - p) (before the learning rate); for a
+leaf with large claims it is at most +1/(p - 1), however large the claims. Most leaves in
+claim data have no claims, so each tree pulls the level down faster than it can be pushed
+back up, and early stopping ends training before it recovers (on this data about 0.85 of
+observed cost at p = 1.8, on training and validation alike). The fitted model is therefore
+rebased: every prediction is multiplied by one factor so that total predicted cost equals
+total training cost. This leaves the ranking of policies unchanged.
+
 Severity
 --------
 The target is average claim cost per policy (capped), with a Gamma objective and the
@@ -103,6 +118,26 @@ def cv_gamma_gbm(
     )
 
 
+def cv_tweedie_gbm(
+    X: pd.DataFrame,
+    cost: np.ndarray,
+    exposure: np.ndarray,
+    power: float,
+    params: dict,
+    nfold: int = 5,
+    max_rounds: int = 3000,
+) -> tuple[int, float]:
+    """As `cv_poisson_gbm`, for a Tweedie model of cost per policy-year. The score is
+    LightGBM's Tweedie negative log-likelihood at the given power."""
+    data = lgb.Dataset(X, label=cost / exposure, weight=exposure)
+    return _cv(
+        {"objective": "tweedie", "tweedie_variance_power": power, "metric": "tweedie", **params},
+        data,
+        nfold,
+        max_rounds,
+    )
+
+
 @dataclass
 class FrequencyGBM:
     """A LightGBM Poisson model for claim frequency, with exposure as an offset."""
@@ -149,3 +184,29 @@ class SeverityGBM:
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         """Predicted cost per claim."""
         return self.booster.predict(X)
+
+
+@dataclass
+class TweedieGBM:
+    """A LightGBM Tweedie model for claim cost per policy-year, weighted by exposure."""
+
+    power: float = 1.5
+    params: dict = field(default_factory=dict)
+    num_boost_round: int = 500
+    booster: lgb.Booster | None = None
+    rebase: float = 1.0
+
+    def fit(self, X: pd.DataFrame, cost: np.ndarray, exposure: np.ndarray) -> "TweedieGBM":
+        data = lgb.Dataset(X, label=cost / exposure, weight=exposure)
+        self.booster = lgb.train(
+            {**BASE_PARAMS, "objective": "tweedie", "tweedie_variance_power": self.power, **self.params},
+            data,
+            num_boost_round=self.num_boost_round,
+        )
+        # See the module docstring: restore total predicted cost to total training cost.
+        self.rebase = float(cost.sum() / np.sum(self.booster.predict(X) * exposure))
+        return self
+
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        """Predicted claim cost per policy-year (pure premium), rebased."""
+        return self.rebase * self.booster.predict(X)
