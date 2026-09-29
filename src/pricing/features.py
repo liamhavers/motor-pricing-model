@@ -97,7 +97,9 @@ def glm_design_matrix(
         for lvl in lvls:
             if lvl != base[f]:
                 columns[f"{f}[{lvl}]"] = (pl.col(f) == lvl).cast(pl.Float64)
-    return banded.select(**columns).to_pandas()
+    # with_columns broadcasts the constant to every row, which select alone would not do
+    # for an intercept-only model.
+    return banded.with_columns(**columns).select(list(columns)).to_pandas()
 
 
 def gbm_matrix(df: pl.DataFrame) -> pd.DataFrame:

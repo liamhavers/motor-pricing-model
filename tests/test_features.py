@@ -34,3 +34,8 @@ def test_add_glm_bands_covers_all_values():
     out = add_glm_bands(df)
     assert out["BonusMalus"].to_list() == ["50", "51-59", "110+"]
     assert out["Density"].to_list() == ["1-9", "316-999", "10000+"]
+
+
+def test_intercept_only_design_matrix_has_every_row():
+    X = glm_design_matrix(pl.DataFrame({"f": ["a", "b", "c"]}), {}, {})
+    assert X.shape == (3, 1)

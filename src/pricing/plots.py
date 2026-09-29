@@ -181,23 +181,28 @@ def plot_lorenz(curves: dict[str, tuple[np.ndarray, np.ndarray]], ginis: dict[st
     return fig
 
 
-def plot_calibration(tables: dict[str, pl.DataFrame]) -> plt.Figure:
-    """Observed against predicted frequency by band of predicted rate, one panel per model.
+def plot_calibration(
+    tables: dict[str, pl.DataFrame],
+    ylabel: str = "Claims per policy-year",
+    xlabel: str = "Band of predicted rate (equal exposure)",
+    title: str = "Calibration, exposure-weighted",
+) -> plt.Figure:
+    """Observed against predicted by band of prediction, one panel per model.
 
-    Each model's bands come from sorting on its own predictions, so the panels share a y
-    scale but not their policies.
+    Takes tables from `evaluation.calibration_table`. Each model's bands come from sorting
+    on its own predictions, so the panels share a y scale but not their policies.
     """
     fig, axes = plt.subplots(1, len(tables), figsize=(4.5 * len(tables), 4), sharey=True)
     for ax, (name, t) in zip(np.atleast_1d(axes), tables.items()):
-        ax.plot(t["band"], t["predicted_freq"], color=MODEL_COLOURS.get(name), marker="o", label="Predicted")
+        ax.plot(t["band"], t["predicted_mean"], color=MODEL_COLOURS.get(name), marker="o", label="Predicted")
         ax.plot(
-            t["band"], t["observed_freq"], color=TEXT_PRIMARY, marker="D", linestyle="none",
+            t["band"], t["observed_mean"], color=TEXT_PRIMARY, marker="D", linestyle="none",
             markersize=6, label="Observed",
         )
         ax.set_xticks(t["band"].to_list())
-        ax.set_xlabel("Band of predicted rate (equal exposure)")
+        ax.set_xlabel(xlabel)
         ax.set_title(name)
         ax.legend(loc="upper left", fontsize=8, labelcolor=TEXT_SECONDARY)
-    np.atleast_1d(axes)[0].set_ylabel("Claims per policy-year")
-    fig.suptitle("Calibration, exposure-weighted", x=0.02, ha="left", fontweight="bold", color=TEXT_PRIMARY)
+    np.atleast_1d(axes)[0].set_ylabel(ylabel)
+    fig.suptitle(title, x=0.02, ha="left", fontweight="bold", color=TEXT_PRIMARY)
     return fig

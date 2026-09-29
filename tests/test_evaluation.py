@@ -64,5 +64,15 @@ def test_calibration_bands_have_equal_exposure():
     y = rng.poisson(rate * e)
     t = calibration_table(y, rate, e, n_bins=10)
     assert t.height == 10
-    assert t["exposure"].to_numpy() == pytest.approx(e.sum() / 10, rel=0.01)
-    assert t["claims"].sum() == y.sum()
+    assert t["weight"].to_numpy() == pytest.approx(e.sum() / 10, rel=0.01)
+    assert t["observed"].sum() == y.sum()
+
+
+def test_gamma_deviance_is_zero_when_exact_and_scale_free():
+    from pricing.evaluation import gamma_deviance
+
+    y = np.array([100.0, 1000.0, 5000.0])
+    w = np.array([1.0, 2.0, 1.0])
+    assert gamma_deviance(y, y, w) == pytest.approx(0)
+    # Same relative error at any scale gives the same deviance.
+    assert gamma_deviance(y, 1.5 * y, w) == pytest.approx(gamma_deviance(10 * y, 15 * y, w))

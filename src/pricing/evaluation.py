@@ -57,6 +57,7 @@ def lorenz_curve(observed, pred_rate, exposure) -> tuple[np.ndarray, np.ndarray]
     """Ordered Lorenz curve: policies sorted from lowest to highest predicted rate.
 
     Returns (cumulative share of exposure, cumulative share of observed claims or cost).
+    For severity, pass claim cost, predicted cost per claim and claim count instead.
     A model that ranks risk well puts few claims in the low-predicted policies, so the
     curve sags far below the diagonal.
     """
@@ -77,36 +78,54 @@ def gini(observed, pred_rate, exposure) -> float:
     return float(1 - 2 * np.trapezoid(y, x))
 
 
-def calibration_table(claims, pred_rate, exposure, n_bins: int = 10) -> pl.DataFrame:
-    """Observed vs predicted frequency by band of predicted rate, with equal exposure per band.
+def calibration_table(observed, pred, weight, n_bins: int = 10) -> pl.DataFrame:
+    """Observed against predicted by band of prediction, each band carrying equal weight.
 
-    Bands are formed by sorting policies on predicted rate and cutting cumulative exposure
-    into `n_bins` equal parts, so each band carries a tenth of the exposure, not a tenth of
-    the policies.
+    `observed` is each row's total (claims, or claim cost), `pred` the predicted amount per
+    unit of weight (claims per policy-year, or cost per claim) and `weight` the units
+    (exposure, or number of claims). Rows are sorted on `pred` and cut into `n_bins` bands
+    of equal total weight, so for frequency each band holds a tenth of the exposure, not a
+    tenth of the policies. `observed_mean` and `predicted_mean` are per unit of weight.
     """
-    order = np.argsort(pred_rate, kind="stable")
-    w = np.asarray(exposure, dtype=float)[order]
+    order = np.argsort(pred, kind="stable")
+    w = np.asarray(weight, dtype=float)[order]
     cum = np.cumsum(w) / w.sum()
     band = np.minimum((cum * n_bins - 1e-12).astype(int), n_bins - 1)
     df = pl.DataFrame(
         {
             "band": band + 1,
-            "exposure": w,
-            "claims": np.asarray(claims, dtype=float)[order],
-            "pred_claims": np.asarray(pred_rate, dtype=float)[order] * w,
+            "weight": w,
+            "observed": np.asarray(observed, dtype=float)[order],
+            "predicted": np.asarray(pred, dtype=float)[order] * w,
         }
     )
     return (
         df.group_by("band")
-        .agg(pl.col("exposure", "claims", "pred_claims").sum())
+        .agg(pl.col("weight", "observed", "predicted").sum())
         .with_columns(
-            (pl.col("claims") / pl.col("exposure")).alias("observed_freq"),
-            (pl.col("pred_claims") / pl.col("exposure")).alias("predicted_freq"),
+            (pl.col("observed") / pl.col("weight")).alias("observed_mean"),
+            (pl.col("predicted") / pl.col("weight")).alias("predicted_mean"),
         )
         .sort("band")
     )
 
 
-def balance(claims, pred_rate, exposure) -> float:
-    """Total predicted claims divided by total observed claims (1.0 is perfect balance)."""
-    return float(np.sum(np.asarray(pred_rate) * np.asarray(exposure)) / np.sum(claims))
+def balance(observed, pred, weight) -> float:
+    """Total predicted divided by total observed (1.0 is perfect balance).
+
+    Frequency: (claims, rate, exposure). Severity: (claim cost, cost per claim, claim count).
+    """
+    return float(np.sum(np.asarray(pred) * np.asarray(weight)) / np.sum(observed))
+
+
+def gamma_deviance(avg_claim, pred, weight) -> float:
+    """Mean Gamma deviance per claim, weighted by number of claims.
+
+    Each term depends on the ratio of observed to predicted, not the difference, so a
+    EUR 500 miss on a EUR 1,000 claim counts as much as a EUR 5,000 miss on a EUR 10,000
+    claim. That suits costs whose spread grows with their size. Lower is better.
+    """
+    y = np.asarray(avg_claim, dtype=float)
+    mu = np.asarray(pred, dtype=float)
+    w = np.asarray(weight, dtype=float)
+    return float(2 * np.sum(w * (-np.log(y / mu) + (y - mu) / mu)) / w.sum())

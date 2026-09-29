@@ -90,3 +90,16 @@ def test_split_is_disjoint_and_reproducible():
     assert train.height == 80 and test.height == 20
     assert set(train["IDpol"]).isdisjoint(test["IDpol"])
     assert split_train_test(df)[1]["IDpol"].to_list() == test["IDpol"].to_list()
+
+
+def test_severity_rows_average_uses_costed_claims(freq, sev):
+    from pricing.data import severity_rows
+
+    out = severity_rows(build_policy_table(freq, sev)).sort("IDpol")
+    assert out["IDpol"].to_list() == [2, 3, 4]
+    assert out["AvgClaim"].to_list() == [100.0, 2600.0, 20.0]
+
+
+def test_policy_table_is_sorted_by_id(freq, sev):
+    out = build_policy_table(freq.reverse(), sev)
+    assert out["IDpol"].is_sorted()

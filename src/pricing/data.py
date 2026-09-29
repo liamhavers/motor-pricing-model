@@ -29,6 +29,12 @@ RANDOM_SEED = 42
 MAX_CLAIM_NB = 4
 MAX_EXPOSURE = 1.0
 
+# Individual claims are capped at this amount before severity modelling. Chosen in
+# notebooks/03_severity.ipynb from the training claims: it caps 0.3% of claims and removes
+# about 24% of claim cost, and cuts the sampling uncertainty in average claim cost from
+# roughly 10% to under 2%.
+LARGE_LOSS_CAP = 50_000.0
+
 FREQ_OPENML_ID = 41214
 SEV_OPENML_ID = 41215
 
@@ -108,10 +114,26 @@ def build_policy_table(
     policies = clean_frequency(freq).join(
         aggregate_severity(sev, large_loss_cap), on="IDpol", how="left"
     )
-    return policies.with_columns(
-        pl.col("SevNb", "ClaimAmount", "ClaimAmountExcess").fill_null(0),
-    ).with_columns(
-        pl.min_horizontal("ClaimNb", "SevNb").alias("ClaimNb"),
+    return (
+        policies.with_columns(
+            pl.col("SevNb", "ClaimAmount", "ClaimAmountExcess").fill_null(0),
+        )
+        .with_columns(
+            pl.min_horizontal("ClaimNb", "SevNb").alias("ClaimNb"),
+        )
+        # The train/test split depends on row order, so fix it rather than rely on the join.
+        .sort("IDpol")
+    )
+
+
+def severity_rows(policies: pl.DataFrame) -> pl.DataFrame:
+    """Policies with at least one costed claim, with `AvgClaim` = claim cost / number of claims.
+
+    `SevNb` (not the capped `ClaimNb`) is the divisor and the model weight, because the
+    cost total covers every costed claim on the policy.
+    """
+    return policies.filter(pl.col("SevNb") > 0).with_columns(
+        (pl.col("ClaimAmount") / pl.col("SevNb")).alias("AvgClaim")
     )
 
 

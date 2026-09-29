@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import statsmodels.api as sm
+from scipy import stats
 from statsmodels.genmod.generalized_linear_model import GLMResultsWrapper
 
 
@@ -25,9 +26,53 @@ def fit_poisson_glm(
     return model.fit()
 
 
-def predict_rate(results: GLMResultsWrapper, X: pd.DataFrame) -> np.ndarray:
-    """Predicted claims per policy-year (offset of zero, i.e. one year of exposure)."""
+def fit_gamma_glm(X: pd.DataFrame, avg_claim: np.ndarray, claim_count: np.ndarray) -> GLMResultsWrapper:
+    """Gamma GLM with a log link on average claim cost, weighted by number of claims.
+
+    The weights are variance weights: the average of n claims is less variable than a
+    single claim (its variance is divided by n), so it is given n times the weight.
+    """
+    model = sm.GLM(
+        np.asarray(avg_claim, dtype=float),
+        X,
+        family=sm.families.Gamma(link=sm.families.links.Log()),
+        var_weights=np.asarray(claim_count, dtype=float),
+    )
+    return model.fit()
+
+
+def predict(results: GLMResultsWrapper, X: pd.DataFrame) -> np.ndarray:
+    """exp(X @ beta): claims per policy-year for frequency, cost per claim for severity.
+
+    No offset is applied, so a frequency prediction is for one year of exposure.
+    """
     return np.exp(X.to_numpy() @ results.params.to_numpy())
+
+
+def drop_factor_tests(
+    fit, X: pd.DataFrame, factors: list[str], full: GLMResultsWrapper
+) -> pl.DataFrame:
+    """F-test for each factor: refit without its columns and compare deviance.
+
+    F = (increase in deviance / columns removed) / dispersion of the full model. A small
+    p-value means the factor explains more than chance would. `fit` takes a design matrix
+    and returns fitted results on the same rows and target as `full`.
+    """
+    rows = []
+    for factor in factors:
+        cols = [c for c in X.columns if c.startswith(f"{factor}[")]
+        reduced = fit(X.drop(columns=cols))
+        f_stat = (reduced.deviance - full.deviance) / len(cols) / full.scale
+        rows.append(
+            {
+                "factor": factor,
+                "columns": len(cols),
+                "deviance_increase": reduced.deviance - full.deviance,
+                "F": f_stat,
+                "p_value": float(stats.f.sf(f_stat, len(cols), full.df_resid)),
+            }
+        )
+    return pl.DataFrame(rows).sort("p_value")
 
 
 def relativities(
@@ -35,8 +80,9 @@ def relativities(
 ) -> pl.DataFrame:
     """Exponentiated coefficients with 95% confidence intervals, one row per factor level.
 
-    A relativity of 1.3 means 30% more claims per policy-year than the base level of that
-    factor, with every other factor held fixed. Base levels are included with relativity 1.
+    A relativity of 1.3 means 30% more claims per policy-year (frequency) or a 30% higher
+    cost per claim (severity) than the base level of that factor, with every other factor
+    held fixed. Base levels are included with relativity 1.
     """
     ci = results.conf_int()
     rows = []
