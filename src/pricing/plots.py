@@ -30,7 +30,7 @@ def set_style() -> None:
             "axes.labelcolor": TEXT_SECONDARY,
             "axes.titlecolor": TEXT_PRIMARY,
             "axes.titlesize": 12,
-            "axes.titleweight": "semibold",
+            "axes.titleweight": "bold",
             "axes.titlelocation": "left",
             "axes.spines.top": False,
             "axes.spines.right": False,
@@ -120,4 +120,84 @@ def plot_severity_distribution(amounts: np.ndarray, markers: dict[str, float]) -
     ax.set_xlabel("Claim amount (EUR, log scale)")
     ax.set_ylabel("Number of claims (log scale)")
     ax.set_title("Individual claim amounts")
+    return fig
+
+
+# Fixed colour per model, used in every comparison figure.
+MODEL_COLOURS = {"GLM": SERIES[0], "GBM": SERIES[1]}
+
+
+def plot_relativities(
+    glm_rel: pl.DataFrame, one_way: pl.DataFrame, factor: str, levels: list[str]
+) -> plt.Figure:
+    """GLM relativities (with 95% intervals) against one-way relativities for one factor.
+
+    The one-way relativity is each level's observed frequency divided by the base level's,
+    ignoring every other factor. The gap between the two is what the other factors explain.
+    """
+    rel = glm_rel.filter(pl.col("factor") == factor)
+    rel = rel.join(pl.DataFrame({"level": levels, "pos": range(len(levels))}), on="level").sort("pos")
+    base = rel.filter(pl.col("is_base"))["level"][0]
+    ow = one_way.with_columns(pl.col(factor).cast(pl.String))
+    base_freq = ow.filter(pl.col(factor) == base)["frequency"][0]
+    ow = ow.with_columns((pl.col("frequency") / base_freq).alias("rel"))
+    ow = ow.join(rel.select("level", "pos"), left_on=factor, right_on="level").sort("pos")
+
+    x = rel["pos"].to_numpy()
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.axhline(1, color=TEXT_SECONDARY, linewidth=1)
+    ax.plot(
+        ow["pos"].to_numpy(), ow["rel"].to_numpy(), color=SERIES[2], marker="s",
+        linestyle="--", linewidth=1.5, label="One-way (observed, no adjustment)",
+    )
+    y = rel["relativity"].to_numpy()
+    err = np.vstack([y - rel["lower_95"].to_numpy(), rel["upper_95"].to_numpy() - y])
+    ax.errorbar(
+        x, y, yerr=err, color=MODEL_COLOURS["GLM"], marker="o", capsize=3,
+        label="GLM relativity with 95% interval",
+    )
+    ax.set_xticks(x, rel["level"].to_list())
+    ax.set_xlabel(f"{factor} (base level: {base})")
+    ax.set_ylabel("Relativity to base level")
+    ax.set_title(f"{factor}: GLM relativities against one-way")
+    ax.legend(loc="best", fontsize=8, labelcolor=TEXT_SECONDARY)
+    return fig
+
+
+def plot_lorenz(curves: dict[str, tuple[np.ndarray, np.ndarray]], ginis: dict[str, float]) -> plt.Figure:
+    """Ordered Lorenz curves for several models on one set of policies."""
+    fig, ax = plt.subplots(figsize=(5.5, 5.5))
+    ax.plot([0, 1], [0, 1], color=TEXT_SECONDARY, linewidth=1, linestyle="--", label="Random (Gini 0)")
+    for name, (x, y) in curves.items():
+        step = max(1, len(x) // 2000)
+        ax.plot(x[::step], y[::step], color=MODEL_COLOURS.get(name), label=f"{name} (Gini {ginis[name]:.3f})")
+    ax.set_xlabel("Cumulative share of exposure\n(policies sorted from lowest to highest predicted rate)")
+    ax.set_ylabel("Cumulative share of observed claims")
+    ax.set_title("Lorenz curve")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.grid(axis="both")
+    ax.legend(loc="upper left", fontsize=8, labelcolor=TEXT_SECONDARY)
+    return fig
+
+
+def plot_calibration(tables: dict[str, pl.DataFrame]) -> plt.Figure:
+    """Observed against predicted frequency by band of predicted rate, one panel per model.
+
+    Each model's bands come from sorting on its own predictions, so the panels share a y
+    scale but not their policies.
+    """
+    fig, axes = plt.subplots(1, len(tables), figsize=(4.5 * len(tables), 4), sharey=True)
+    for ax, (name, t) in zip(np.atleast_1d(axes), tables.items()):
+        ax.plot(t["band"], t["predicted_freq"], color=MODEL_COLOURS.get(name), marker="o", label="Predicted")
+        ax.plot(
+            t["band"], t["observed_freq"], color=TEXT_PRIMARY, marker="D", linestyle="none",
+            markersize=6, label="Observed",
+        )
+        ax.set_xticks(t["band"].to_list())
+        ax.set_xlabel("Band of predicted rate (equal exposure)")
+        ax.set_title(name)
+        ax.legend(loc="upper left", fontsize=8, labelcolor=TEXT_SECONDARY)
+    np.atleast_1d(axes)[0].set_ylabel("Claims per policy-year")
+    fig.suptitle("Calibration, exposure-weighted", x=0.02, ha="left", fontweight="bold", color=TEXT_PRIMARY)
     return fig

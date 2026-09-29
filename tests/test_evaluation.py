@@ -1,3 +1,4 @@
+import numpy as np
 import polars as pl
 import pytest
 
@@ -27,3 +28,41 @@ def test_one_way_table_accepts_expression():
     out = one_way_table(df, pl.col("x") // 10 * 10, "x_band")
     assert out["x_band"].to_list() == [0, 10]
     assert out["policies"].to_list() == [2, 1]
+
+
+def test_poisson_deviance_matches_sklearn_rate_form():
+    from sklearn.metrics import mean_poisson_deviance
+
+    from pricing.evaluation import poisson_deviance
+
+    rng = np.random.default_rng(1)
+    e = rng.uniform(0.1, 1, 1000)
+    rate = rng.uniform(0.05, 0.3, 1000)
+    y = rng.poisson(rate * e)
+    expected = mean_poisson_deviance(y / e, rate, sample_weight=e)
+    assert poisson_deviance(y, rate, e) == pytest.approx(expected)
+    assert poisson_deviance(y, y / e + 1e-300, e) == pytest.approx(0, abs=1e-9)
+
+
+def test_gini_orders_models():
+    from pricing.evaluation import gini
+
+    rng = np.random.default_rng(2)
+    rate = rng.uniform(0.01, 0.5, 50_000)
+    e = np.ones_like(rate)
+    y = rng.poisson(rate)
+    assert gini(y, rate, e) > 0.2
+    assert abs(gini(y, rng.uniform(size=rate.size), e)) < 0.02
+
+
+def test_calibration_bands_have_equal_exposure():
+    from pricing.evaluation import calibration_table
+
+    rng = np.random.default_rng(3)
+    e = rng.uniform(0.1, 1, 10_000)
+    rate = rng.uniform(0.05, 0.3, 10_000)
+    y = rng.poisson(rate * e)
+    t = calibration_table(y, rate, e, n_bins=10)
+    assert t.height == 10
+    assert t["exposure"].to_numpy() == pytest.approx(e.sum() / 10, rel=0.01)
+    assert t["claims"].sum() == y.sum()
