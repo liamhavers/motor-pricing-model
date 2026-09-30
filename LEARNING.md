@@ -53,7 +53,11 @@ A single metric tells you which model is better on average, but not where two mo
 
 ## 5. Commercial analysis
 - The GBM beat the GLM. Would you deploy it?
+
+I wouldn't replace the GLM outright. I'd take it in two steps. First, I'd feed what the GBM found back into the GLM. A single flag for customers who've claimed their way off the no-claims discount path closed about half the gap, and it stays fully explainable. Second, I'd consider a hybrid: the GLM sets the base price, with a GBM adjustment capped at something like ±15%, so the part that's harder to explain can only move a price so far. That keeps the transparency, governance and fairness testing of a GLM while capturing more of the GBM's better risk ranking. On the test set, the GLM was undercharging one group of customers by about €1.3m. Before going live, I'd validate on another year of data, test the outcomes for fairness, and ideally build a demand model to see how customers react to the price changes.
 - What would an underwriter, a regulator and a pricing manager each want to know first?
+
+Each would start from a different angle. An underwriter manages risk, so they'd want to know which customers' prices change and whether it makes sense. For example: why does a BonusMalus of 52 cost more than 51? The answer is that 52 can only be reached after a claim. A regulator is focused on fair outcomes, so they'd ask whether we can explain an individual price, whether the model disadvantages groups with protected characteristics, including through proxies, and whether it complies with the FCA's pricing rules and Consumer Duty. A pricing manager cares about results and delivery, so they'd want the impact on profit and customer numbers, how many customers see large price changes and whether they'd need phasing in, and what it costs to implement and monitor."
 
 ## 6. README
 - Explain the whole project in two minutes to a non-technical interviewer.

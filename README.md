@@ -17,39 +17,27 @@ Every choice is made on training data and each model is scored once on a held-ou
 
 ## Key findings
 
-<!--
-To be written by Liam. Numbers to draw on (all on the test set unless stated):
+All figures are on the held-out test set of 135,603 policies, with claims capped at EUR 50,000.
 
-- Frequency: GBM Gini 0.326 vs GLM 0.293; Poisson deviance 0.4543 vs 0.4625. Bootstrap 95% interval
-  for the Gini difference 0.025 to 0.041.
-- Severity: neither model reliably beats a single average cost per claim (bootstrap intervals include
-  zero). Nearly all differentiation between customers comes from frequency.
-- Pure premium: GBM frequency x severity Gini 0.354 vs GLM 0.311 (interval for the difference 0.025
-  to 0.063). Tweedie vs frequency x severity: no real difference for the GLM; frequency x severity
-  better for the GBM.
-- Money (both models scaled to the same total premium, capped claims): about EUR 1.25m of EUR 9.7m
-  (13%) of premium moves between customers. Customers the GLM undercharges (GBM > 1.1x GLM, about
-  51,000 policies): EUR 2.9m premium against EUR 4.2m claims, a shortfall of about EUR 1.3m.
-  Customers it overcharges (GBM < 0.9x GLM, about 47,000): EUR 4.3m premium against EUR 3.1m claims.
-- Who: undercharged are more often off the BonusMalus claim-free path (claimed recently) and drivers
-  under 50 with maximum discount and newer cars (claims 1.35x GLM premium). Overcharged include
-  BonusMalus 51 to 54 on the claim-free path, BonusMalus 100+ with newer cars (claims 0.75x GLM
-  premium), and more drivers aged 70+.
-- Double lift: where the GBM prices about 1.7x the GLM, observed frequency was 1.9x average; GBM
-  predicted 1.8x, GLM 1.1x.
-- Feeding back: one "off the discount path" flag in the GLM (relativity 2.37) closes about half the
-  GLM-to-GBM gap (54% frequency deviance, 49% pure premium Gini).
-- Other: large losses above EUR 50k are 0.3% of claims but 24% of cost; claim counts are
-  overdispersed (1.7), so GLM confidence intervals are about 30% too narrow.
--->
-
-*To be written.*
+- **Almost all of the difference between customers comes from how often they claim, not how much their claims cost.** Once large claims are capped, neither severity model predicted claim cost reliably better than a single average. The frequency models did the work.
+- **The GBM ranks risk better than the GLM, and the gap is not down to chance.** On pure premium its Gini is 0.354 against the GLM's 0.311, and the 95% interval for the difference (0.025 to 0.063) excludes zero. The same holds for frequency on its own.
+- **Pricing with the GBM would move about 13% of premium between customers.** With both models charging the same total, about EUR 1.25m of the test portfolio's EUR 9.7m would shift. The customers the GLM undercharges paid EUR 2.9m and claimed EUR 4.2m, a shortfall of about EUR 1.3m. The customers it overcharges paid EUR 4.3m and claimed EUR 3.1m, and are the ones most likely to leave for a competitor.
+- **Actual claims followed the GBM's prices where the two models disagreed.** Where the GBM priced about 1.7 times higher than the GLM, claims came in at 1.9 times the average; the GBM predicted 1.8 and the GLM 1.1.
+- **The undercharged and overcharged customers can be described.** The GLM undercharges customers who have claimed recently, and drivers under 50 on the maximum no-claims discount with newer cars, whose claims came to 1.35 times their GLM premium. It overcharges claim-free customers at BonusMalus 51 to 54, customers at BonusMalus 100 or above with newer cars (claims 0.75 times their GLM premium) and, more often than average, drivers aged 70 and over.
+- **Most of the GBM's advantage comes from one pattern, and the GLM can learn it.** The GBM found, from the data alone, that a BonusMalus value off the claim-free discount path means a recent claim. Adding that single flag to the GLM (a relativity of 2.4) closed about half of the gap between the two models.
+- **Large losses are a pricing problem in their own right.** Claims over EUR 50,000 were 0.3% of claims but 24% of cost, and the loading to cover them moved from about 20% to 31% because of a single EUR 4.1m claim.
 
 ## Recommendation
 
-<!-- To be written by Liam. -->
+I would not replace the GLM with the GBM outright. The GBM is more accurate, but the GLM's rating table is what makes prices easy to explain to customers, underwriters and the regulator, simple to govern and monitor, and straightforward to test for unfair outcomes.
 
-*To be written.*
+Instead I would keep the GLM as the base price and add a GBM adjustment on top, capped so that it can only move any one customer's price by a limited amount. The GLM would still set most of each price, the part that is harder to explain would be bounded, and the business would capture more of the GBM's better risk ranking. As a first step, the off-discount-path flag should go into the GLM directly: it closes about half the gap on its own and keeps the GLM's rating-table form.
+
+Before any change went live, I would want three things that this project could not provide:
+
+- validation on a later year of data, since these results come from a single period;
+- testing of outcomes by customer group, to check that neither the flag nor the GBM adjustment acts as a proxy for a protected characteristic;
+- price and conversion data, to estimate how customers would respond to the changes and what losing overcharged customers would cost.
 
 ## The problem
 
