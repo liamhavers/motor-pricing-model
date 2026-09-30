@@ -31,7 +31,12 @@ A handful of very large claims are rare and essentially random. In our data, 0.3
 
 ## 3. Pure premium
 - What is a Tweedie distribution and why does it suit total claim cost?
+
+Total claim cost per policy is an awkward target: 96% of policies cost nothing, and the rest are positive and heavily skewed. A Poisson model is for counts, and a Gamma model can't produce a zero. A Tweedie distribution with power between 1 and 2 fits exactly this shape, because it's a compound Poisson-Gamma: a Poisson number of claims, each with a Gamma-distributed cost, added up. The power sets how variance grows with the mean. I chose 1.8, which is what our claim-size distribution implies, and validation showed results were flat between 1.4 and 1.9.
+
 - When would you prefer frequency x severity over a single Tweedie model?
+
+I'd usually prefer frequency × severity because it shows you which part is driving the price. For example, young drivers claim much more often, but their claims don't cost much more. Each part can also have its own factors: our severity model only needed three, while frequency needed eight. It also lets you trend claims inflation separately from frequency. On our data it also predicted better: the frequency × severity GBM beat the Tweedie GBM, probably because severity has so little signal that keeping it separate stops cost noise drowning out the frequency signal. A single Tweedie model makes sense when you want one simpler model to build and maintain, or when you only have total cost and no reliable claim counts.
 
 ## 4. Evaluation
 - What does deviance measure, and why not RMSE?

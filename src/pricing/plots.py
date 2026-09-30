@@ -244,3 +244,25 @@ def plot_relativity_comparison(
     ax.set_title(f"{factor}: pure premium relativities")
     ax.legend(loc="best", fontsize=8, labelcolor=TEXT_SECONDARY)
     return fig
+
+
+def plot_double_lift(table: pl.DataFrame, name_a: str, name_b: str, ylabel: str) -> plt.Figure:
+    """Observed and both models' predictions, indexed to their averages, by band of B / A."""
+    x = table["band"].to_numpy()
+    fig, (top, bottom) = plt.subplots(
+        2, 1, sharex=True, figsize=(8, 5.5), gridspec_kw={"height_ratios": [2.2, 1], "hspace": 0.08}
+    )
+    top.axhline(1, color=TEXT_SECONDARY, linewidth=1)
+    top.plot(x, table["a_index"], marker="o", label=name_a, **model_style(name_a))
+    top.plot(x, table["b_index"], marker="o", label=name_b, **model_style(name_b))
+    top.plot(x, table["observed_index"], color=TEXT_PRIMARY, marker="D", linestyle="none", markersize=6, label="Observed")
+    top.set_ylabel(ylabel)
+    top.set_title(f"Double lift: {name_b} against {name_a}")
+    top.legend(loc="upper left", fontsize=8, labelcolor=TEXT_SECONDARY)
+
+    bottom.axhline(1, color=TEXT_SECONDARY, linewidth=1)
+    bottom.plot(x, table["ratio_b_to_a"], color=TEXT_SECONDARY, marker="o", linewidth=1.5)
+    bottom.set_ylabel(f"{name_b.split()[0]} / {name_a.split()[0]}\nprediction")
+    bottom.set_xticks(x)
+    bottom.set_xlabel(f"Band of {name_b.split()[0]} / {name_a.split()[0]} prediction ratio (equal exposure)")
+    return fig

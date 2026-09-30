@@ -76,3 +76,52 @@ def test_gamma_deviance_is_zero_when_exact_and_scale_free():
     assert gamma_deviance(y, y, w) == pytest.approx(0)
     # Same relative error at any scale gives the same deviance.
     assert gamma_deviance(y, 1.5 * y, w) == pytest.approx(gamma_deviance(10 * y, 15 * y, w))
+
+
+def test_double_lift_bands_follow_ratio_and_index_to_one():
+    from pricing.evaluation import double_lift_table
+
+    rng = np.random.default_rng(6)
+    n = 20_000
+    a = rng.uniform(0.05, 0.2, n)
+    b = a * rng.uniform(0.5, 2.0, n)
+    w = rng.uniform(0.1, 1, n)
+    y = rng.poisson(b * w)  # B is the true model
+    t = double_lift_table(y, a, b, w, n_bins=5)
+    assert t["ratio_b_to_a"].is_sorted()
+    assert t["weight"].to_numpy() == pytest.approx(w.sum() / 5, rel=0.01)
+    for c in ("observed_index", "a_index", "b_index"):
+        assert np.average(t[c].to_numpy(), weights=t["weight"].to_numpy()) == pytest.approx(1.0)
+    # Observed follows the true model: it rises across bands, A's index falls.
+    assert t["observed_index"][-1] > t["observed_index"][0]
+    assert t["a_index"][-1] < t["a_index"][0]
+
+
+def test_pearson_dispersion_near_one_for_poisson_data():
+    from pricing.evaluation import pearson_dispersion
+
+    rng = np.random.default_rng(7)
+    rate = rng.uniform(0.05, 0.3, 100_000)
+    e = rng.uniform(0.1, 1, rate.size)
+    assert pearson_dispersion(rng.poisson(rate * e), rate, e, 1) == pytest.approx(1.0, abs=0.03)
+
+
+def test_bootstrap_difference_contains_full_difference():
+    from pricing.evaluation import bootstrap_difference, gini
+
+    rng = np.random.default_rng(8)
+    rate = rng.uniform(0.01, 0.5, 20_000)
+    e = np.ones_like(rate)
+    y = rng.poisson(rate)
+    noisy = rate * rng.uniform(0.5, 1.5, rate.size)
+    diff, lo, hi = bootstrap_difference(gini, y, noisy, rate, e, n_boot=100)
+    assert lo < diff < hi
+    assert lo > 0  # the true rate ranks better than a noisy version
+
+
+def test_top_share():
+    from pricing.evaluation import top_share
+
+    y = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 5.0])
+    pred = np.arange(10.0)
+    assert top_share(y, pred, np.ones(10), 0.1) == pytest.approx(1.0)

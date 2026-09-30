@@ -30,7 +30,7 @@ Built on the French motor third-party liability datasets (freMTPL2freq and freMT
 
 ```
 ├── data/                  # gitignored, raw data cached here on first download
-├── notebooks/             # 01_eda to 05_commercial_analysis
+├── notebooks/             # 01_eda to 06_commercial_analysis
 ├── src/pricing/           # data, features, glm, gbm, evaluation, plots
 ├── reports/figures/
 └── tests/

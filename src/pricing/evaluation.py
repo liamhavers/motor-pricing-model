@@ -145,3 +145,79 @@ def tweedie_deviance(cost, pred_pp, exposure, power: float) -> float:
     return float(
         mean_tweedie_deviance(np.asarray(cost, dtype=float) / e, pred_pp, sample_weight=e, power=power)
     )
+
+
+def double_lift_table(observed, pred_a, pred_b, weight, n_bins: int = 10) -> pl.DataFrame:
+    """Observed against two models' predictions, by band of the ratio pred_b / pred_a.
+
+    Rows are sorted on how much model B's prediction differs from model A's and cut into
+    `n_bins` bands of equal weight. Band 1 is where B is lowest relative to A, the last band
+    where B is highest. Each series is divided by its own overall average, so a value of 1.2
+    means 20% above that series' portfolio average; this removes any difference in overall
+    level and leaves only the differences in shape.
+
+    Where the models disagree, the observed line shows which one was right: if observed
+    follows B's line across the bands, B's extra differentiation is real.
+    """
+    w = np.asarray(weight, dtype=float)
+    obs = np.asarray(observed, dtype=float)
+    a = np.asarray(pred_a, dtype=float)
+    b = np.asarray(pred_b, dtype=float)
+    order = np.argsort(b / a, kind="stable")
+    cum = np.cumsum(w[order]) / w.sum()
+    band = np.empty(len(w), dtype=int)
+    band[order] = np.minimum((cum * n_bins - 1e-12).astype(int), n_bins - 1) + 1
+    df = pl.DataFrame({"band": band, "weight": w, "observed": obs, "a": a * w, "b": b * w})
+    overall = {c: df[c].sum() / w.sum() for c in ("observed", "a", "b")}
+    return (
+        df.group_by("band")
+        .agg(pl.col("weight", "observed", "a", "b").sum())
+        .with_columns(
+            (pl.col("b") / pl.col("a")).alias("ratio_b_to_a"),
+            *[(pl.col(c) / pl.col("weight") / overall[c]).alias(f"{c}_index") for c in ("observed", "a", "b")],
+            (pl.col("observed") / pl.col("a")).alias("observed_over_a"),
+            (pl.col("observed") / pl.col("b")).alias("observed_over_b"),
+        )
+        .sort("band")
+    )
+
+
+def bootstrap_difference(
+    metric, observed, pred_a, pred_b, weight, n_boot: int = 200, seed: int = 42
+) -> tuple[float, float, float]:
+    """Difference metric(B) - metric(A) with a 95% bootstrap interval.
+
+    Policies are resampled with replacement and both models are scored on the same
+    resample each time, so the interval reflects how much the difference could move with a
+    different sample of policies. Returns (difference on the full data, lower, upper).
+    """
+    observed, pred_a, pred_b, weight = (np.asarray(x, dtype=float) for x in (observed, pred_a, pred_b, weight))
+    rng = np.random.default_rng(seed)
+    diffs = []
+    for _ in range(n_boot):
+        i = rng.integers(0, len(observed), len(observed))
+        diffs.append(metric(observed[i], pred_b[i], weight[i]) - metric(observed[i], pred_a[i], weight[i]))
+    full = metric(observed, pred_b, weight) - metric(observed, pred_a, weight)
+    return float(full), float(np.quantile(diffs, 0.025)), float(np.quantile(diffs, 0.975))
+
+
+def pearson_dispersion(claims, pred_rate, exposure, n_params: int) -> float:
+    """Pearson chi-squared divided by residual degrees of freedom for a Poisson model.
+
+    A Poisson model assumes variance equals the mean, which makes this about 1. Values
+    above 1 mean the data varies more than Poisson allows (overdispersion): predictions are
+    unaffected, but standard errors and confidence intervals are too narrow by a factor of
+    the square root of this value.
+    """
+    y = np.asarray(claims, dtype=float)
+    mu = np.asarray(pred_rate, dtype=float) * np.asarray(exposure, dtype=float)
+    return float(np.sum((y - mu) ** 2 / mu) / (len(y) - n_params))
+
+
+def top_share(observed, pred, weight, share: float = 0.1) -> float:
+    """Share of observed claims (or cost) in the `share` of exposure predicted riskiest."""
+    order = np.argsort(pred, kind="stable")[::-1]
+    w = np.asarray(weight, dtype=float)[order]
+    y = np.asarray(observed, dtype=float)[order]
+    top = np.cumsum(w) <= share * w.sum()
+    return float(y[top].sum() / y.sum())

@@ -81,7 +81,8 @@ motor-pricing-model/
 │   ├── 02_frequency.ipynb
 │   ├── 03_severity.ipynb
 │   ├── 04_pure_premium.ipynb
-│   └── 05_commercial_analysis.ipynb
+│   ├── 05_evaluation.ipynb
+│   └── 06_commercial_analysis.ipynb
 ├── src/pricing/
 │   ├── data.py            # loading, cleaning, joining, capping
 │   ├── features.py        # banding and encoding of rating factors
