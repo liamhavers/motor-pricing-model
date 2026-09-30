@@ -39,3 +39,10 @@ def test_add_glm_bands_covers_all_values():
 def test_intercept_only_design_matrix_has_every_row():
     X = glm_design_matrix(pl.DataFrame({"f": ["a", "b", "c"]}), {}, {})
     assert X.shape == (3, 1)
+
+
+def test_off_discount_path():
+    from pricing.features import off_discount_path
+
+    df = pl.DataFrame({"BonusMalus": [50, 51, 52, 62, 76, 77, 100, 125]})
+    assert df.select(off_discount_path())["OffDiscountPath"].to_list() == [0, 0, 1, 1, 0, 1, 0, 0]

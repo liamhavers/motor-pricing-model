@@ -108,3 +108,20 @@ def gbm_matrix(df: pl.DataFrame) -> pd.DataFrame:
     for c in GBM_CATEGORICAL:
         out[c] = out[c].astype("category")
     return out
+
+
+# The French bonus-malus coefficient is multiplied by 0.95 after each claim-free year and
+# rounded down to two decimals, with a floor of 0.50. From 100 (a new driver) the values a
+# claim-free driver passes through are these. A value below 100 that is not on this path can
+# only be reached after a claim (each claim multiplies the coefficient by 1.25).
+BONUS_MALUS_PATH = [100, 95, 90, 85, 80, 76, 72, 68, 64, 60, 57, 54, 51, 50]
+
+
+def off_discount_path() -> pl.Expr:
+    """1.0 for BonusMalus values between 50 and 100 that are off the claim-free path, else 0.
+
+    Found by the GBM: these policies claim about 2.8 times as often as on-path policies with
+    similar BonusMalus, which the GLM's ordered bands average away.
+    """
+    bm = pl.col("BonusMalus")
+    return ((bm > 50) & (bm < 100) & ~bm.is_in(BONUS_MALUS_PATH)).cast(pl.Float64).alias("OffDiscountPath")

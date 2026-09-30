@@ -102,3 +102,16 @@ def test_tweedie_gbm_is_rebased_to_training_total(simulated_cost):
     assert np.sum(model.predict(X) * exposure) == pytest.approx(cost.sum())
     pred = model.predict(pd.DataFrame({"g": [0, 1]}))
     assert pred[1] / pred[0] == pytest.approx(3.0, rel=0.15)
+
+
+def test_to_numeric_matches_lightgbm_predictions():
+    import lightgbm as lgb
+
+    from pricing.gbm import to_numeric
+
+    rng = np.random.default_rng(9)
+    X = pd.DataFrame({"x": rng.normal(size=2000), "c": pd.Categorical(rng.choice(["b", "a", "c"], 2000))})
+    y = (X["c"] == "c") * 2.0 + X["x"] + rng.normal(size=2000)
+    booster = lgb.train({"objective": "regression", "verbose": -1, "min_data_in_leaf": 5}, lgb.Dataset(X, y), 20)
+    numeric = to_numeric(X, booster)
+    assert np.allclose(booster.predict(numeric.to_numpy()), booster.predict(X))

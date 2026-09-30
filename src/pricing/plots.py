@@ -266,3 +266,49 @@ def plot_double_lift(table: pl.DataFrame, name_a: str, name_b: str, ylabel: str)
     bottom.set_xticks(x)
     bottom.set_xlabel(f"Band of {name_b.split()[0]} / {name_a.split()[0]} prediction ratio (equal exposure)")
     return fig
+
+
+def plot_mispricing(table: pl.DataFrame, label_col: str, title: str) -> plt.Figure:
+    """GLM premium, GBM premium and observed cost per segment, as grouped bars."""
+    labels = [str(v) for v in table[label_col].to_list()]
+    x = np.arange(len(labels))
+    width = 0.27
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    series = [
+        ("GLM premium", table["glm_premium"], MODEL_COLOURS["GLM"]),
+        ("GBM premium", table["gbm_premium"], MODEL_COLOURS["GBM"]),
+        ("Observed claim cost", table["observed"], TEXT_PRIMARY),
+    ]
+    for i, (name, values, colour) in enumerate(series):
+        ax.bar(x + (i - 1) * width, values.to_numpy() / 1e6, width * 0.92, color=colour, label=name)
+    ax.set_xticks(x, labels)
+    ax.set_ylabel("EUR million (test portfolio, capped)")
+    ax.set_title(title)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=8, labelcolor=TEXT_SECONDARY)
+    return fig
+
+
+def plot_importance(names: list[str], values: np.ndarray, xlabel: str, title: str) -> plt.Figure:
+    """Horizontal bars, largest at the top."""
+    order = np.argsort(values)
+    fig, ax = plt.subplots(figsize=(7, 0.45 * len(names) + 1))
+    ax.barh(np.array(names)[order], np.asarray(values)[order], color=SERIES[0], height=0.7)
+    ax.grid(axis="x")
+    ax.grid(axis="y", visible=False)
+    ax.set_xlabel(xlabel)
+    ax.set_title(title)
+    return fig
+
+
+def plot_shap_dependence(x: np.ndarray, shap_values: np.ndarray, groups: dict[str, np.ndarray],
+                         xlabel: str, title: str) -> plt.Figure:
+    """SHAP value against feature value, one colour per group of policies (boolean masks)."""
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.axhline(0, color=TEXT_SECONDARY, linewidth=1)
+    for (name, mask), colour in zip(groups.items(), SERIES):
+        ax.scatter(x[mask], shap_values[mask], s=10, alpha=0.5, color=colour, label=name, edgecolors="none")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("SHAP value (log scale of claim rate)")
+    ax.set_title(title)
+    ax.legend(loc="upper left", fontsize=8, labelcolor=TEXT_SECONDARY, markerscale=2)
+    return fig

@@ -221,3 +221,61 @@ def top_share(observed, pred, weight, share: float = 0.1) -> float:
     y = np.asarray(observed, dtype=float)[order]
     top = np.cumsum(w) <= share * w.sum()
     return float(y[top].sum() / y.sum())
+
+
+def mispricing_table(df: pl.DataFrame, group: str) -> pl.DataFrame:
+    """Premium each model charges against observed cost, by segment.
+
+    `df` needs columns `group`, `exposure`, `observed` (claim cost), `glm` and `gbm`
+    (predicted cost per policy-year). Both models should already be scaled to the same total
+    premium, so the table shows who pays what rather than the overall level.
+    `shift` = GBM premium - GLM premium: positive where the GLM charges less than the GBM
+    thinks the segment costs.
+    """
+    return (
+        df.group_by(group)
+        .agg(
+            pl.len().alias("policies"),
+            pl.col("exposure").sum(),
+            pl.col("observed").sum(),
+            (pl.col("glm") * pl.col("exposure")).sum().alias("glm_premium"),
+            (pl.col("gbm") * pl.col("exposure")).sum().alias("gbm_premium"),
+        )
+        .with_columns(
+            (pl.col("gbm_premium") - pl.col("glm_premium")).alias("shift"),
+            (pl.col("observed") / pl.col("glm_premium")).alias("observed_over_glm"),
+            (pl.col("observed") / pl.col("gbm_premium")).alias("observed_over_gbm"),
+        )
+        .sort(group)
+    )
+
+
+def leaf_rules(tree, feature_names: list[str]) -> dict[int, str]:
+    """Readable rule for each leaf of a fitted scikit-learn decision tree.
+
+    Conditions on the same feature are merged into one range, e.g. "30 <= DrivAge < 50".
+    Thresholds are rounded up to the next whole number, which is exact for integer features.
+    """
+    t = tree.tree_
+    rules = {}
+
+    def walk(node, bounds):
+        if t.children_left[node] == -1:
+            parts = []
+            for f, (lo, hi) in bounds.items():
+                name = feature_names[f]
+                if lo is not None and hi is not None:
+                    parts.append(f"{lo} <= {name} < {hi}")
+                elif lo is not None:
+                    parts.append(f"{name} >= {lo}")
+                else:
+                    parts.append(f"{name} < {hi}")
+            rules[int(node)] = ", ".join(parts)
+            return
+        f, cut = t.feature[node], int(np.floor(t.threshold[node])) + 1
+        lo, hi = bounds.get(f, (None, None))
+        walk(t.children_left[node], {**bounds, f: (lo, cut if hi is None else min(hi, cut))})
+        walk(t.children_right[node], {**bounds, f: (cut if lo is None else max(lo, cut), hi)})
+
+    walk(0, {})
+    return rules

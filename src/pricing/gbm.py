@@ -210,3 +210,18 @@ class TweedieGBM:
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         """Predicted claim cost per policy-year (pure premium), rebased."""
         return self.rebase * self.booster.predict(X)
+
+
+def to_numeric(X: pd.DataFrame, booster: lgb.Booster) -> pd.DataFrame:
+    """Replace categorical columns with the integer codes LightGBM uses internally.
+
+    shap's TreeExplainer needs a numeric matrix. LightGBM stores the category order it saw
+    in training (`pandas_categorical`), so the codes here match the model's splits. Pass the
+    result to shap as a NumPy array: given a DataFrame, shap calls LightGBM's own predict,
+    which rejects numeric columns where it expects categorical ones.
+    """
+    out = X.copy()
+    cat_cols = [c for c in X.columns if isinstance(X[c].dtype, pd.CategoricalDtype)]
+    for col, categories in zip(cat_cols, booster.pandas_categorical):
+        out[col] = pd.Categorical(X[col].astype(str), categories=categories).codes.astype(float)
+    return out.astype(float)

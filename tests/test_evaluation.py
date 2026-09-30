@@ -125,3 +125,27 @@ def test_top_share():
     y = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 5.0])
     pred = np.arange(10.0)
     assert top_share(y, pred, np.ones(10), 0.1) == pytest.approx(1.0)
+
+
+def test_leaf_rules_describe_integer_splits():
+    from sklearn.tree import DecisionTreeRegressor
+
+    from pricing.evaluation import leaf_rules
+
+    X = np.array([[a, b] for a in range(18, 80) for b in (50, 100)], dtype=float)
+    y = (X[:, 0] < 30) * 1.0 + (X[:, 1] > 50) * 2.0
+    tree = DecisionTreeRegressor(max_depth=2).fit(X, y)
+    rules = set(leaf_rules(tree, ["DrivAge", "BonusMalus"]).values())
+    # Only 50 and 100 occur, so the tree splits at the midpoint 75: BonusMalus <= 75.
+    assert "BonusMalus < 76, DrivAge < 30" in rules
+    assert any("DrivAge >= 30" in r for r in rules)
+
+
+def test_mispricing_table_shift_sign():
+    from pricing.evaluation import mispricing_table
+
+    df = pl.DataFrame({"seg": ["a", "b"], "exposure": [1.0, 1.0], "observed": [50.0, 150.0],
+                       "glm": [100.0, 100.0], "gbm": [60.0, 140.0]})
+    t = mispricing_table(df, "seg")
+    assert t["shift"].to_list() == [-40.0, 40.0]
+    assert t["observed_over_glm"].to_list() == [0.5, 1.5]

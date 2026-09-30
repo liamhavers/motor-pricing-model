@@ -40,8 +40,16 @@ I'd usually prefer frequency × severity because it shows you which part is driv
 
 ## 4. Evaluation
 - What does deviance measure, and why not RMSE?
+
+Deviance measures how far predictions are from a perfect fit, judged against the noise the distribution expects at each prediction. So a miss on a policy that's expected to be expensive counts for less, because a bigger miss was expected there. RMSE squares every error and treats them all equally, and with insurance data, mostly zeros and a few huge claims, a handful of policies decide the score. In my project, 55% of the squared error came from 10 policies out of 135,000, and RMSE rated the GLM, the GBM and charging everyone the average within 0.1% of each other. Deviance separated them clearly.
 - What does a Gini of 0.3 mean in practice?
+
+The Gini measures risk ranking: how well the model sorts policies from cheapest to most expensive, not whether the overall price level is right. It comes from the Lorenz curve: 0 is random ranking and 1 is perfect. In practice, with a Gini of about 0.3, the 10% of policies the model rates riskiest produce about 25% of the claims, against 10% if the ranking were random. That's typical for motor, because individual claims are largely chance. Better ranking matters because it lets you undercut competitors on good risks, while competitors who rank worse end up with the bad risks you've priced properly.
+
+
 - What does a double-lift chart show that a single metric doesn't?
+
+A single metric tells you which model is better on average, but not where two models disagree or which one is right there. Two models can have similar Ginis and still price very different customers very differently. A double lift sorts policies by the ratio of the two models' predictions, cuts them into bands, and plots actual results against both models in each band. Whichever line the actuals follow is the model that's right about those customers. In my project, where the GBM priced 1.7 times higher than the GLM, actual claims came in at 1.9 times average, so the GLM was underpricing those customers by about 80%.
 
 ## 5. Commercial analysis
 - The GBM beat the GLM. Would you deploy it?
