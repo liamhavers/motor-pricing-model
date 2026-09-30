@@ -61,3 +61,13 @@ Each would start from a different angle. An underwriter manages risk, so they'd 
 
 ## 6. README
 - Explain the whole project in two minutes to a non-technical interviewer.
+
+Car insurers have to price every customer for the risk they bring. Charge too little and you lose money on their claims. Charge too much and they go to a competitor. It's difficult because most drivers never claim in a given year, and a few claims are enormous.
+
+I built pricing models on about 680,000 real French car insurance policies. I split the problem the way insurers do: how often someone is likely to claim, and how much a claim costs. Then I compared two kinds of model. The first is the industry standard, which works like a table of multipliers: young drivers times this, city drivers times that. The second is a more flexible machine-learning model, which is usually more accurate but harder to explain.
+
+I tested both on customers the models had never seen. The machine-learning model was better at sorting safe customers from risky ones, and I checked the difference wasn't just luck. When I translated that into money, switching would move about 13% of premium between customers. The customers the standard model was undercharging cost about €1.3 million more in claims than they paid.
+
+The most interesting part was why. The flexible model had worked out, on its own, that you can spot drivers who've recently claimed from their exact no-claims discount level, which the standard model's groupings missed. When I added that one feature back into the standard model, it closed about half the gap.
+
+So my recommendation wasn't to throw out the standard model. It was to add what the machine-learning model found, and then consider a limited adjustment on top. That keeps prices explainable to customers and regulators. Before using it for real, I'd test it on a later year, check it treats different groups of customers fairly, and look at how customers respond to price changes.
